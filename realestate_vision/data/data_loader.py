@@ -90,6 +90,7 @@ class DataLoader:
     if 'images' not in self.inspector.get_table_names():
       meta.create_all(self.engine)
 
+  # from image db
   def get_image_labels_df(self) -> pd.DataFrame:
     if self.db_conn is None:
       return None
@@ -139,7 +140,7 @@ class DataLoader:
     # img = tf.io.read_file(img_path)
     # img = tf.image.decode_jpeg(img, channels=3)
 
-    ds = self.sample_tfrecords_ds(tfrecord_filename)
+    ds = self.get_big_archive_tfrecords_ds(tfrecord_filename)
 
     # Linear scan ds till it hits, this is highly inefficient, but it works for now
     for img, fname, r in ds:
@@ -147,7 +148,6 @@ class DataLoader:
       if filename == name:
         return img
     
-
   def get_big_archive_tfrecords_ds(self, tfrecord_filename: str = None, return_decode_image: bool = True) -> tf.data.Dataset:
     '''
     TFRecord tf.data.Dataset from massive set of listing images stored/archived originally on external hard drives
