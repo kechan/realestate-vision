@@ -2,8 +2,9 @@ from typing import List, Set, Dict, Tuple, Any, Optional, Iterator, Union
 
 from pathlib import Path
 from realestate_nlp.common.run_config import home, bOnColab
+from realestate_core.common.utils import isNone_or_NaN
 
-from ..common.utils import isNone_or_NaN, sha256digest
+from ..common.utils import sha256digest
 from ..common.modules import AUTO
 
 import tensorflow as tf
@@ -148,6 +149,7 @@ class DataLoader:
       if filename == name:
         return img
     
+  # Big archive (original images available on external hard drive)
   def get_big_archive_tfrecords_ds(self, tfrecord_filename: str = None, return_decode_image: bool = True) -> tf.data.Dataset:
     '''
     TFRecord tf.data.Dataset from massive set of listing images stored/archived originally on external hard drives
@@ -186,7 +188,23 @@ class DataLoader:
 
     return ds
 
+  def get_big_archive_soft_labels(self) -> pd.DataFrame:
+    '''
+    Return soft labels (aka predictions) for "big archive images" 
 
+    Note: This should cover all but 192 images for get_big_archive_tfrecords_ds(), 
+          the rest is covered by data_loader.get_image_labels_df()
+    '''
+
+    SamsungT5_deployment_predictions_df = pd.read_csv(home/'ListingImageClassification'/'working_dir'/'predictions'/'SamsungT5_deployment_predictions_df.csv', dtype={'listingId': str})
+    deployment_predictions_df = pd.read_csv(home/'ListingImageClassification'/'working_dir'/'predictions'/'deployment_predictions_df.csv', dtype={'listingId': str})
+
+    deployment_predictions_df = pd.concat([deployment_predictions_df, SamsungT5_deployment_predictions_df], axis=0, ignore_index=True)
+
+    return deployment_predictions_df
+
+
+  # mostly labelled dataset from all_hydra training
   def get_all_hydra_labels_ds(self, return_decode_image: bool = True) -> tf.data.Dataset:
     '''
     TFRecord tf.data.Dataset that was used to train the hydra model. 99% of them should have humna labels
@@ -214,7 +232,15 @@ class DataLoader:
     # filenames = [filename.numpy().decode('utf-8') for img, filename in tqdm(ds)]
     return ds
 
+  def get_all_hydra_labels(self) -> pd.DataFrame:
+    '''
+    Return all labels for all images in the hydra dataset
+    '''
+    image_labels_df = self.get_image_labels_df()
+    return image_labels_df
 
+
+  # images that are archived in 100x100 grid from image tagging pipeline
   def get_tagged_images_ds(self, tfrecord_filename: str = None, return_decode_image: bool = True) -> Dict[str, tf.data.Dataset]:
     '''
     TFRecord tf.data.Dataset from image tagging system. These are stored on external disk for now (My Mac Backup)
@@ -298,7 +324,21 @@ class DataLoader:
       
     return tfrecord_filename_2_ds
 
+  def get_tagged_images_soft_labels(self, bundle_id: int = None) -> Union[pd.DataFrame, List]:
+    '''
+    Get soft labels for tagged images
 
+    If no "bundle_id" is specified, return a list of available pandas feather files
+    If a "bundle_id" is specified, return a pandas dataframe of soft labels
+    '''
+
+    if bundle_id is None:
+      return (home/'ListingImagesData'/'soft_labels').lf('*_bigstack_rlp_listing_images_100_predictions_df')
+    else:
+      return pd.read_feather(home/'ListingImagesData'/'soft_labels'/f'{bundle_id}_bigstack_rlp_listing_images_100_predictions_df')
+
+
+ # These are low resolution google street view images (IROC project)
   def get_iroc_image_artifacts(self, img_height=375, img_width=375) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, List, tf.data.Dataset, tf.data.Dataset]:
     def get_subfolder(img_name):
       return sha256digest(img_name)[:2]
@@ -360,8 +400,7 @@ class DataLoader:
     dev_img_ds = dev_tfrecord_ds.map(decode_img, num_parallel_calls=AUTO)
 
     return image_lineage_df, iroc_home_links_sample_42_df, iroc_property_df, human_labels_df, labels, train_img_ds, dev_img_ds
-
-
+ 
   def get_iroc_images_ds(self, tfrecord_filename: str = None, img_height: int = 375, img_width: int = 375) -> tf.data.Dataset:
     '''
     TFRecord tf.data.Dataset from IROC image scraping.
@@ -405,6 +444,15 @@ class DataLoader:
     ds = ds.map(decode_img, num_parallel_calls=AUTO)
 
     return ds
+
+  def get_iroc_images_soft_labels(self) -> pd.DataFrame:
+    '''
+    Returns a dataframe with the soft labels for the IROC images.
+    '''
+    iroc_predictions_df = pd.read_feather(home/'ListingImageClassification'/'data'/'iroc'/'images'/'iroc_predictions_df')
+    return iroc_predictions_df
+
+
 
 
 

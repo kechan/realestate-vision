@@ -8,7 +8,7 @@ from tensorflow.keras.models import load_model
 
 from tfrecord_helper.tfrecord_helper import TFRecordHelper, TFRecordHelperWriter
 from realestate_nlp.common.run_config import home, bOnColab
-from realestate_nlp.common.util import join_df
+from realestate_core.common.utils import join_df
 from realestate_vision.common.utils import get_listingId_from_image_name
 
 def gen_inference_for(ds: tf.data.Dataset, tuple_pos_img: int = 0, tuple_pos_filename: int = 1) -> List:
@@ -18,6 +18,9 @@ def gen_inference_for(ds: tf.data.Dataset, tuple_pos_img: int = 0, tuple_pos_fil
   
   As part of ML workflow, or certain context, these predictions/inferences are interpreted as weak or soft labels
   '''
+
+  for x in ds.take(1): break
+  n_args = len(x)    # number of arguments in the tuple per example
 
   def get_filename(*x):
     return x[tuple_pos_filename]
@@ -77,9 +80,16 @@ def gen_inference_for(ds: tf.data.Dataset, tuple_pos_img: int = 0, tuple_pos_fil
 
   img_height, img_width = 224, 224    # exterior classification model take in 224x224 images
 
-  def resize_jpg(img, filename):
-    img = tf.image.resize(img, (img_height, img_width), method=tf.image.ResizeMethod.BILINEAR)
-    return img, filename
+  if n_args == 2:
+    def resize_jpg(img, filename):
+      img = tf.image.resize(img, (img_height, img_width), method=tf.image.ResizeMethod.BILINEAR)
+      return img, filename
+  elif n_args == 3:
+    def resize_jpg(img, filename, r):
+      img = tf.image.resize(img, (img_height, img_width), method=tf.image.ResizeMethod.BILINEAR)
+      return img, filename, r
+  else:
+    raise ValueError('ds must have 2 or 3 arguments per example')
 
   ds = ds.map(resize_jpg, num_parallel_calls=tf.data.AUTOTUNE)
   batch_ds = ds.batch(batch_size).prefetch(buffer_size=tf.data.AUTOTUNE)
