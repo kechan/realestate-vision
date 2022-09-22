@@ -21,6 +21,10 @@ def get_listingId_from_image_name(image_name):
     return "UNKNOWN"
 
 def get_listing_subfolder_from_listing_id(listing_id: str) -> str:
+  ''' 
+  Returns the subfolder of the listing_id. listing images can be stored in a hierarchy of subfolders.
+  e.g. images for 12345678 can be stored under /12/34/56/78/
+  '''
   folder = []
   for k in range(len(listing_id) // 2):
     i = int(listing_id[2*k: 2*k+2])
@@ -37,12 +41,6 @@ def get_listing_folder_from_image_name(image_name: str) -> str:
     folder.append(str(i))
 
   return '/'.join(folder)  
-
-def join_df(left, right, left_on, right_on=None, suffix='_y', how='left'):
-    if right_on is None: right_on = left_on
-    return left.merge(right, how=how, left_on=left_on, right_on=right_on, 
-                      suffixes=("", suffix))
-
 
 def sha256digest(content, truncate_len=10):
   return hashlib.sha224(content.encode('utf-8')).hexdigest()[:truncate_len]          

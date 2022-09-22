@@ -7,11 +7,11 @@ import pandas as pd
 from tensorflow.keras.models import load_model
 
 from tfrecord_helper.tfrecord_helper import TFRecordHelper, TFRecordHelperWriter
-from realestate_nlp.common.run_config import home, bOnColab
+from realestate_core.common.run_config import home, bOnColab
 from realestate_core.common.utils import join_df
 from realestate_vision.common.utils import get_listingId_from_image_name
 
-def gen_inference_for(ds: tf.data.Dataset, tuple_pos_img: int = 0, tuple_pos_filename: int = 1) -> List:
+def gen_inference_for(ds: tf.data.Dataset, tuple_pos_img: int = 0, tuple_pos_filename: int = 1) -> pd.DataFrame:
   '''
   Use hydra and exterior models to generate inference given a tf.data.Dataset whose example is a tuple of (image, filename)
   image is at least 416x416x3

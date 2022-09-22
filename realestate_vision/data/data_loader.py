@@ -1,11 +1,14 @@
 from typing import List, Set, Dict, Tuple, Any, Optional, Iterator, Union
 
 from pathlib import Path
-from realestate_nlp.common.run_config import home, bOnColab
-from realestate_core.common.utils import isNone_or_NaN
+from tqdm import tqdm
+from realestate_core.common.run_config import home, bOnColab
+from realestate_core.common.utils import isNone_or_NaN, save_to_pickle, load_from_pickle
+
 
 from ..common.utils import sha256digest
 from ..common.modules import AUTO
+
 
 import tensorflow as tf
 import pandas as pd
@@ -125,6 +128,7 @@ class DataLoader:
     return df
 
   def get_image_as_tensor(self, name: str) -> tf.Tensor:
+    # look for image location from db
     if self.db_conn is None:
       return None
 
@@ -150,7 +154,7 @@ class DataLoader:
         return img
     
   # Big archive (original images available on external hard drive)
-  def get_big_archive_tfrecords_ds(self, tfrecord_filename: str = None, return_decode_image: bool = True) -> tf.data.Dataset:
+  def get_big_archive_tfrecords_ds(self, tfrecord_filename: str = None, return_decode_image: bool = True) -> Union[tf.data.Dataset, List]:
     '''
     TFRecord tf.data.Dataset from massive set of listing images stored/archived originally on external hard drives
     Naming format and location 
@@ -170,12 +174,13 @@ class DataLoader:
     parse_fn = TFRecordHelper.parse_fn(feature_desc=feature_desc)
 
     if tfrecord_filename is None:
-      # tfrecords set one: (original images not on samsung t5)
-      tfrecords = (home/'ListingImageClassification'/'working_dir'/'tfrecords').lf('*.tfrecords')
+      # return list of available tfrecords
+      return (home/'ListingImageClassification'/'working_dir'/'tfrecords').lf('*.tfrecords')
 
-      ds = tf.data.TFRecordDataset(tfrecords).map(parse_fn, num_parallel_calls=AUTO)
+      # ds = tf.data.TFRecordDataset(tfrecords).map(parse_fn, num_parallel_calls=AUTO)
     else:
-      tfrecord_filename = home/'ListingImageClassification'/'working_dir'/'tfrecords'/tfrecord_filename
+      if Path(tfrecord_filename).parent == Path('.'):
+        tfrecord_filename = home/'ListingImageClassification'/'working_dir'/'tfrecords'/tfrecord_filename
       ds = tf.data.TFRecordDataset(tfrecord_filename).map(parse_fn, num_parallel_calls=AUTO)
 
     if return_decode_image:
@@ -205,7 +210,7 @@ class DataLoader:
 
 
   # mostly labelled dataset from all_hydra training
-  def get_all_hydra_labels_ds(self, return_decode_image: bool = True) -> tf.data.Dataset:
+  def get_all_hydra_labels_ds(self, tfrecord_filename: str = None, return_decode_image: bool = True) -> Union[tf.data.Dataset, List]:
     '''
     TFRecord tf.data.Dataset that was used to train the hydra model. 99% of them should have humna labels
     Nameing format and location
@@ -217,8 +222,17 @@ class DataLoader:
     }
     parse_fn = TFRecordHelper.parse_fn(feature_desc=feature_desc)
 
-    tfrecords = (home/'ListingImageClassification'/'data'/'all_for_hydra').lf('all_labels_*.tfrecords')
-    ds = tf.data.TFRecordDataset(tfrecords).map(parse_fn, num_parallel_calls=AUTO)
+    if tfrecord_filename is None:
+      # return list of available tfrecords
+      return (home/'ListingImageClassification'/'data'/'all_for_hydra').lf('all_labels_*.tfrecords')
+    elif tfrecord_filename == 'all':
+      # ds should have length 169,956
+      all_tfrecords = (home/'ListingImageClassification'/'data'/'all_for_hydra').lf('all_labels_*.tfrecords')
+      ds = tf.data.TFRecordDataset(all_tfrecords).map(parse_fn, num_parallel_calls=AUTO)
+    else:      
+      if Path(tfrecord_filename).parent == Path('.'):
+        tfrecord_filename = home/'ListingImageClassification'/'data'/'all_for_hydra'/tfrecord_filename
+      ds = tf.data.TFRecordDataset(tfrecord_filename).map(parse_fn, num_parallel_calls=AUTO)
 
     if return_decode_image:
       def decode_image(x):
@@ -228,7 +242,7 @@ class DataLoader:
       ds = ds.map(decode_image, num_parallel_calls=AUTO)
       return ds
     
-    # ds should have length 169,956
+    
     # filenames = [filename.numpy().decode('utf-8') for img, filename in tqdm(ds)]
     return ds
 
@@ -239,9 +253,33 @@ class DataLoader:
     image_labels_df = self.get_image_labels_df()
     return image_labels_df
 
+  def get_all_hydra_z_indices(self, prefix: str = None, img_name: str = None) -> Union[np.lib.npyio.NpzFile, np.ndarray]:
+    '''
+    Return VQGAN z_indices for all images in the all hydra dataset
+    '''
+    z_indices = np.load(home/'ListingImagesData'/'vqgan_indices'/'all_hydra_labels.z_indices.npz')
+    if prefix is None and img_name is None:
+      return z_indices
+
+    if prefix is not None:
+      return z_indices[prefix + '.z_indices'], z_indices[prefix + '.fnames']
+
+    if img_name is not None:
+      prefix, img_idx = None, None
+      for x in [f for f in z_indices.files if 'fnames' in f]:
+        if img_name in z_indices[x]:
+          prefix = Path(x).stem
+          img_idx = np.where(z_indices[x] == img_name)[0][0]
+          break
+
+      if prefix is None: return None
+
+      return z_indices[prefix + '.z_indices'][img_idx]
+    
+
 
   # images that are archived in 100x100 grid from image tagging pipeline
-  def get_tagged_images_ds(self, tfrecord_filename: str = None, return_decode_image: bool = True) -> Dict[str, tf.data.Dataset]:
+  def get_tagged_images_ds(self, tfrecord_filename: str = None) -> Dict[str, tf.data.Dataset]:
     '''
     TFRecord tf.data.Dataset from image tagging system. These are stored on external disk for now (My Mac Backup)
     Naming format and location
@@ -249,11 +287,17 @@ class DataLoader:
 
           Note: 673_bigstack_rlp_listing_images_100.tfrecords are from recent listings that have AVM quick quotes.
     '''
+
+    bigstack_tfrecord_dir = Path('/Volumes/My Mac Backup/RLP/ListingImageClassification/data/bigstack_rlp_listing_images_tfrecords')
     
     if tfrecord_filename is None:
-      bigstack_tfrecord_dir = Path('/Volumes/My Mac Backup/RLP/ListingImageClassification/data/bigstack_rlp_listing_images_tfrecords')
+      
       assert bigstack_tfrecord_dir.exists(), f'{bigstack_tfrecord_dir} does not exist'
       # bigstack_tfrecord_photos_dir = bigstack_tfrecord_dir/'photos'
+
+      tfrecords = bigstack_tfrecord_dir.lf('*.tfrecords')
+      return tfrecords
+    elif tfrecord_filename == 'all':
       tfrecords = bigstack_tfrecord_dir.lf('*.tfrecords')
     else:
       tfrecords = [tfrecord_filename]
@@ -324,19 +368,58 @@ class DataLoader:
       
     return tfrecord_filename_2_ds
 
-  def get_tagged_images_soft_labels(self, bundle_id: int = None) -> Union[pd.DataFrame, List]:
+  def get_tagged_images_soft_labels(self, predictions_df_filename: int = None) -> Union[pd.DataFrame, List]:
     '''
     Get soft labels for tagged images
 
-    If no "bundle_id" is specified, return a list of available pandas feather files
-    If a "bundle_id" is specified, return a pandas dataframe of soft labels
+    If no "predictions_df_filename" is specified, return a list of available pandas feather files
+    If a "predictions_df_filename" is specified, return a pandas dataframe of soft labels
     '''
 
-    if bundle_id is None:
+    if predictions_df_filename is None:
       return (home/'ListingImagesData'/'soft_labels').lf('*_bigstack_rlp_listing_images_100_predictions_df')
     else:
-      return pd.read_feather(home/'ListingImagesData'/'soft_labels'/f'{bundle_id}_bigstack_rlp_listing_images_100_predictions_df')
+      return pd.read_feather(predictions_df_filename)
 
+  def get_avm_high_res_images_ds(self, tfrecord_name: str = None, return_decode_image: bool = True) -> Union[tf.data.Dataset, List]:
+    '''
+    Get the tf.data.Dataset of images from AVM snapshot listings coming from high resolution images downloaded from the jumptools VM
+    If tfrecord_name is None, return a list of available tfrecord files.
+
+    Note: this was done in context of ConditionSentiment project, may move this later.
+    '''
+    if tfrecord_name is None:   # just return a list of available tfrecord files
+      return (home/'ConditionSentiment'/'data'/'images'/'tfrecords').lf('avm_high_res_img_*_of_*.tfrecords')
+    else:
+      if Path(tfrecord_name).parent == Path('.'):
+        tfrecord_name = home/'ConditionSentiment'/'data'/'images'/'tfrecords'/tfrecord_name
+
+      features = {
+        'filename': TFRecordHelper.DataType.STRING,
+        'image_raw': TFRecordHelper.DataType.STRING,   # bytes for the encoded jpeg, png, etc.
+      }
+      parse_fn = TFRecordHelper.parse_fn(features)
+
+      ds = tf.data.TFRecordDataset(tfrecord_name).map(parse_fn, num_parallel_calls=AUTO)
+
+    if return_decode_image:   # futher processings
+      def decode_image(x):
+        img = tf.image.decode_jpeg(x['image_raw'], channels=3)
+        return img, x['filename']    # image in 1st slot to enable .predict(...) nicely.
+
+      ds = ds.map(decode_image, num_parallel_calls=AUTO)
+      return ds
+
+    return ds
+
+
+  def get_avm_high_res_images_soft_labels(self) -> pd.DataFrame:
+    '''
+    Get soft labels for AVM high resolution images
+    If name is None, return a list of available pandas feather files
+    If name is specified, return a pandas dataframe of soft labels
+    '''
+    return pd.read_feather(home/'ConditionSentiment'/'data'/'images'/'soft_labels'/'avm_high_res_predictions_df')
 
  # These are low resolution google street view images (IROC project)
   def get_iroc_image_artifacts(self, img_height=375, img_width=375) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, List, tf.data.Dataset, tf.data.Dataset]:
@@ -453,7 +536,67 @@ class DataLoader:
     return iroc_predictions_df
 
 
+  # tally up all image names that ever exist in an tfrecord file
+  def tally_up_all_image_names_and_cached(self):
+    big_archive_image_ds = self.get_big_archive_tfrecords_ds()
+    big_archive_imgs = []
+    for _, img_name, _ in tqdm(big_archive_image_ds):
+      big_archive_imgs.append(img_name.numpy().decode('utf-8'))
 
+    save_to_pickle(big_archive_imgs, home/'ListingImagesData'/'tmp'/'big_archive_imgs.pkl.gz', compressed=True)
+    print(f'len(big_archive_imgs): {len(big_archive_imgs)}')
+
+    ds = self.get_all_hydra_labels_ds(return_decode_image=False)
+    all_hydra_imgs = []
+    for x in tqdm(ds.as_numpy_iterator()):
+      all_hydra_imgs.append(x['filename'].decode('utf-8'))
+
+    save_to_pickle(big_archive_imgs, home/'ListingImagesData'/'tmp'/'big_archive_imgs.pkl.gz', compressed=True)
+    print(f'len(all_hydra_imgs): {len(all_hydra_imgs)}')
+
+    
+    ds = self.get_tagged_images_ds()
+
+    tagged_images_imgs = []
+
+    for k, (ds_name, img_ds) in enumerate(ds.items()):      
+      for x in img_ds: break
+
+      if len(x) == 2:
+        for _, fname in tqdm(img_ds.as_numpy_iterator()):
+          tagged_images_imgs.append(fname.decode('utf-8'))
+      elif len(x) == 3:
+        for _, fname, _ in tqdm(img_ds.as_numpy_iterator()):
+          tagged_images_imgs.append(fname.decode('utf-8'))
+      else:
+        pass
+
+    save_to_pickle(tagged_images_imgs, home/'ListingImagesData'/'tmp'/'tagged_images_imgs.pkl.gz', compressed=True)
+    print(f'len(tagged_images_imgs): {len(tagged_images_imgs)}')
+
+
+    avm_tfrecord_filenames = self.get_avm_high_res_images_ds()   # list of available tfrecord filenames
+    avm_tfrecord_filenames.sort()
+
+    avm_high_res_imgs = []
+    for f in avm_tfrecord_filenames:
+      img_ds = self.get_avm_high_res_images_ds(f)
+      avm_high_res_imgs += [fname.decode('utf-8') for _, fname in img_ds.as_numpy_iterator()]
+
+    save_to_pickle(avm_high_res_imgs, home/'ListingImagesData'/'tmp'/'avm_high_res_imgs.pkl.gz', compressed=True)
+    print(f'len(avm_high_res_imgs): {len(avm_high_res_imgs)}')
+    
+  def load_all_image_names_from_cache(self) -> Tuple[List]:
+    big_archive_imgs = load_from_pickle(home/'ListingImagesData'/'tmp'/'big_archive_imgs.pkl.gz', compressed=True)
+    all_hydra_imgs = load_from_pickle(home/'ListingImagesData'/'tmp'/'all_hydra_imgs.pkl.gz', compressed=True)
+
+    tagged_images_imgs = load_from_pickle(home/'ListingImagesData'/'tmp'/'tagged_images_imgs.pkl.gz', compressed=True)
+    tagged_images_imgs_2 = load_from_pickle(home/'ListingImagesData'/'tmp'/'tagged_images_imgs_2.pkl.gz', compressed=True)
+    tagged_images_imgs = list(set(tagged_images_imgs + tagged_images_imgs_2))
+
+    avm_high_res_imgs = load_from_pickle(home/'ListingImagesData'/'tmp'/'avm_high_res_imgs.pkl.gz', compressed=True)
+
+    return big_archive_imgs, all_hydra_imgs, tagged_images_imgs, avm_high_res_imgs
 
 
   def __del__(self):
