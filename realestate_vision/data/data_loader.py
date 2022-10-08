@@ -209,6 +209,15 @@ class DataLoader:
     return deployment_predictions_df
 
 
+  def get_big_archive_z_indices(self, filename: str = None, img_name: str = None) -> Tuple[np.ndarray]:
+    if filename is None:
+      for f in (home/'ListingImagesData'/'vqgan_indices').lf('big_archive_*.z_indices.npz'):
+        np.load(f)
+
+      # to be continued...
+
+
+
   # mostly labelled dataset from all_hydra training
   def get_all_hydra_labels_ds(self, tfrecord_filename: str = None, return_decode_image: bool = True) -> Union[tf.data.Dataset, List]:
     '''
@@ -256,6 +265,8 @@ class DataLoader:
   def get_all_hydra_z_indices(self, prefix: str = None, img_name: str = None) -> Union[np.lib.npyio.NpzFile, np.ndarray]:
     '''
     Return VQGAN z_indices for all images in the all hydra dataset
+
+    prefix: Prefix of the tfrecord file (e.g. all_labels_0).  If None, return all z_indices
     '''
     z_indices = np.load(home/'ListingImagesData'/'vqgan_indices'/'all_hydra_labels.z_indices.npz')
     if prefix is None and img_name is None:
@@ -300,6 +311,8 @@ class DataLoader:
     elif tfrecord_filename == 'all':
       tfrecords = bigstack_tfrecord_dir.lf('*.tfrecords')
     else:
+      if Path(tfrecord_filename).parent == Path('.'):
+        tfrecord_filename = bigstack_tfrecord_dir/tfrecord_filename
       tfrecords = [tfrecord_filename]
 
     _features = {
@@ -368,7 +381,7 @@ class DataLoader:
       
     return tfrecord_filename_2_ds
 
-  def get_tagged_images_soft_labels(self, predictions_df_filename: int = None) -> Union[pd.DataFrame, List]:
+  def get_tagged_images_soft_labels(self, predictions_df_filename: str = None) -> Union[pd.DataFrame, List]:
     '''
     Get soft labels for tagged images
 
@@ -379,6 +392,8 @@ class DataLoader:
     if predictions_df_filename is None:
       return (home/'ListingImagesData'/'soft_labels').lf('*_bigstack_rlp_listing_images_100_predictions_df')
     else:
+      if Path(predictions_df_filename).parent == Path('.'):
+        predictions_df_filename = home/'ListingImagesData'/'soft_labels'/predictions_df_filename
       return pd.read_feather(predictions_df_filename)
 
   def get_avm_high_res_images_ds(self, tfrecord_name: str = None, return_decode_image: bool = True) -> Union[tf.data.Dataset, List]:
