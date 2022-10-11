@@ -311,7 +311,7 @@ class DataLoader:
     elif tfrecord_filename == 'all':
       tfrecords = bigstack_tfrecord_dir.lf('*.tfrecords')
     else:
-      if Path(tfrecord_filename).parent == Path('.'):
+      if Path(tfrecord_filename).parent == Path('.') and bigstack_tfrecord_dir.exists():
         tfrecord_filename = bigstack_tfrecord_dir/tfrecord_filename
       tfrecords = [tfrecord_filename]
 

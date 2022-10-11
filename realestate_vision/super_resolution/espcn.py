@@ -21,12 +21,12 @@ def scaling(input_image):
 
 # Processing tf.data.Dataset during training
 def process_input(input, input_size, upscale_factor):
-  input = tf.image.rbg_to_yuv(input)
+  input = tf.image.rgb_to_yuv(input)
   y, u, v = tf.split(input, 3, axis=-1)
   return tf.image.resize(y, [input_size, input_size], method='area')
 
 def process_target(input):
-  input = tf.image.rbg_to_yuv(input)
+  input = tf.image.rgb_to_yuv(input)
   y, u, v = tf.split(input, 3, axis=-1)
   return y
 
@@ -133,10 +133,10 @@ class ESPCNCallback(keras.callbacks.Callback):
     self.psnr.append(10 * math.log10(1 / logs["loss"]))
 
 
-def configure_callbacks(checkpoint_filepath: str = None, upscale_factor: int = 3) -> List[tf.keras.callbacks.Callback]:
+def configure_callbacks(checkpoint_filepath: str = None, upscale_factor: int = 3, test_img_paths: List = None) -> List[tf.keras.callbacks.Callback]:
   early_stopping_callback = keras.callbacks.EarlyStopping(monitor="loss", patience=10)
 
-  if checkpoint_filepath is None: checkpoint_filepath = "checkpoint"
+  if checkpoint_filepath is None: checkpoint_filepath = "/tmp/checkpoint"
 
   model_checkpoint_callback = keras.callbacks.ModelCheckpoint(
       filepath=checkpoint_filepath,
@@ -146,7 +146,9 @@ def configure_callbacks(checkpoint_filepath: str = None, upscale_factor: int = 3
       save_best_only=True,
   )
 
-  return [ESPCNCallback(), early_stopping_callback, model_checkpoint_callback]
+  return [ESPCNCallback(test_img_paths=test_img_paths, upscale_factor=upscale_factor), 
+          early_stopping_callback, 
+          model_checkpoint_callback]
 
 
 def get_create_compile_model(upscale_factor: int = 3, learning_rate: float = 0.001) -> keras.Model:
