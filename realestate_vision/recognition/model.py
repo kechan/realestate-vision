@@ -11,7 +11,7 @@ from realestate_core.common.run_config import home, bOnColab
 import pandas as pd
 
 class ExteriorClassifier:
-  def __init__(self, cache_all_models=False):
+  def __init__(self, model_dir=None, cache_all_models=False):
     self.model_files = [
       'resnet50_distill_exteriors.acc.0.9106.h5',
       'resnet50_distill_exteriors.acc.0.9114.h5',
@@ -20,8 +20,12 @@ class ExteriorClassifier:
       'resnet50_distill_exteriors.acc.0.9072.h5'
     ]
     self.cache_all_models = cache_all_models
+    self.model_dir = model_dir
+    if self.model_dir is None:
+      self.model_dir = home/'ListingImageClassification'/'training'/'exteriors'
+
     if cache_all_models:
-      self.models = [load_model(home/'ListingImageClassification'/'training'/'exteriors'/m) for m in self.model_files]                           
+      self.models = [load_model(self.model_dir/m) for m in self.model_files]
 
     self.labels = ['facade', 'backyard', 'view', 'exterior']
 
@@ -104,8 +108,10 @@ class GeneralClassifier:
   ROOM_CLASS_NAMES = ['basement', 'bathroom', 'bedroom', 'dining_room', 'garage', 'gym_room', 'kitchen', 'laundry_room', 'living_room', 'office', 'other', 'storage']
   BOOLEAN_FEATURE_CLASS_NAMES = ['fireplace', 'agpool', 'body_of_water', 'igpool', 'balcony', 'deck_patio_veranda', 'ss_kitchen', 'double_sink', 'upg_kitchen']
 
-  def __init__(self):
-    self.model_file = home/'ListingImageClassification'/'training'/'hydra_all'/'resnet50_hydra_all.acc.0.9322.h5'
+  def __init__(self, model_file=None):
+    self.model_file = model_file
+    if self.model_file is None:
+      self.model_file = home/'ListingImageClassification'/'training'/'hydra_all'/'resnet50_hydra_all.acc.0.9322.h5'
     self.model = load_model(self.model_file, compile=False)
 
     self.img_height, self.img_width = 416, 416    # general classification model take in 416x416 images
