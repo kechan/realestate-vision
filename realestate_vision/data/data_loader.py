@@ -403,18 +403,20 @@ class DataLoader:
 
     Note: this was done in context of ConditionSentiment project, may move this later.
     '''
+    features = {
+      'filename': TFRecordHelper.DataType.STRING,
+      'image_raw': TFRecordHelper.DataType.STRING,   # bytes for the encoded jpeg, png, etc.
+    }
+    parse_fn = TFRecordHelper.parse_fn(features)
+
     if tfrecord_name is None:   # just return a list of available tfrecord files
       return (home/'ConditionSentiment'/'data'/'images'/'tfrecords').lf('avm_high_res_img_*_of_*.tfrecords')
+    elif tfrecord_name == 'all':
+      all_tfrecords = (home/'ConditionSentiment'/'data'/'images'/'tfrecords').lf('avm_high_res_img_*_of_*.tfrecords')
+      ds = tf.data.TFRecordDataset(all_tfrecords).map(parse_fn, num_parallel_calls=AUTO)      
     else:
       if Path(tfrecord_name).parent == Path('.'):
         tfrecord_name = home/'ConditionSentiment'/'data'/'images'/'tfrecords'/tfrecord_name
-
-      features = {
-        'filename': TFRecordHelper.DataType.STRING,
-        'image_raw': TFRecordHelper.DataType.STRING,   # bytes for the encoded jpeg, png, etc.
-      }
-      parse_fn = TFRecordHelper.parse_fn(features)
-
       ds = tf.data.TFRecordDataset(tfrecord_name).map(parse_fn, num_parallel_calls=AUTO)
 
     if return_decode_image:   # futher processings
