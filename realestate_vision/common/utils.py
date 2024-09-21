@@ -11,7 +11,8 @@ from tensorflow.keras.models import Sequential, Model, load_model
 
 def get_listingId_from_image_name(image_name):
   # listingId_regex = re.compile(r'.*?(\d+).*.jpg$')
-  listingId_regex = re.compile(r'.*?(\d{4,}).*.jpg$')    # listingId length > 4
+  # listingId_regex = re.compile(r'.*?(\d{4,}).*.jpg$')    # listingId length > 4
+  listingId_regex = re.compile(r'.*?(\d{4,}).*.(jpg|jpeg|heic)$')
 
   matches = listingId_regex.match(str(image_name))
   if matches is not None:
